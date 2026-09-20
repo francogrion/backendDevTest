@@ -1,6 +1,7 @@
 package com.nunegal.similarproducts;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,8 @@ class SimilarProductsContractTest {
     private static final WireMockServer existingApis = new WireMockServer(options().dynamicPort());
     @Autowired
     WebTestClient webTestClient;
+    @Autowired
+    MeterRegistry meterRegistry;
 
     @BeforeAll
     static void startExistingApis() {
@@ -198,5 +201,31 @@ class SimilarProductsContractTest {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.length()").isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("contabiliza los similares descartados")
+    void counts_discarded_similars() {
+        existingApis.stubFor(get("/product/5/similarids").willReturn(okJson("[1,2,6]")));
+        stubDetail("1", "Shirt", "9.99", 0);
+        stubDetail("2", "Dress", "19.99", 0);
+        existingApis.stubFor(get("/product/6").willReturn(aResponse().withStatus(500)));
+
+        double before = discardedSimilars();
+
+        webTestClient.get()
+                .uri("/product/{productId}/similar", "5")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(2);
+
+        assertThat(discardedSimilars())
+                .as("el similar 6 responde 500, debe quedar contabilizado")
+                .isEqualTo(before + 1);
+    }
+
+    private double discardedSimilars() {
+        return meterRegistry.get("similar.products.discarded").counter().count();
     }
 }
