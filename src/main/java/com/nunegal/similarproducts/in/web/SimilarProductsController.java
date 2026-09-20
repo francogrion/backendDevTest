@@ -1,0 +1,16 @@
+package com.nunegal.similarproducts.infrastructure.in.web;
+
+import com.nunegal.similarproducts.domain.ProductDetail;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
+
+@RestController
+class SimilarProductsController {
+
+    @GetMapping("/product/{productId}/similar")
+    Flux<ProductDetail> similar(@PathVariable String productId) {
+        return Flux.empty();
+    }
+}
