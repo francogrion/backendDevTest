@@ -162,4 +162,41 @@ class SimilarProductsContractTest {
                 .expectStatus().isNotFound()
                 .expectBody().isEmpty();
     }
+
+    @Test
+    @DisplayName("omite el similar cuyo detalle no existe (escenario notFound de k6)")
+    void skips_similars_whose_detail_is_missing() {
+        existingApis.stubFor(get("/product/4/similarids").willReturn(okJson("[1,2,5]")));
+        stubDetail("1", "Shirt", "9.99", 0);
+        stubDetail("2", "Dress", "19.99", 0);
+        existingApis.stubFor(get("/product/5").willReturn(aResponse()
+                .withStatus(404)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"message\":\"Product not found\"}")));
+
+        webTestClient.get()
+                .uri("/product/{productId}/similar", "4")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(2)
+                .jsonPath("$[0].id").isEqualTo("1")
+                .jsonPath("$[1].id").isEqualTo("2");
+    }
+
+    @Test
+    @DisplayName("omite el similar cuyo detalle falla con 500 (escenario error de k6)")
+    void skips_similars_whose_detail_fails() {
+        existingApis.stubFor(get("/product/5/similarids").willReturn(okJson("[1,2,6]")));
+        stubDetail("1", "Shirt", "9.99", 0);
+        stubDetail("2", "Dress", "19.99", 0);
+        existingApis.stubFor(get("/product/6").willReturn(aResponse().withStatus(500)));
+
+        webTestClient.get()
+                .uri("/product/{productId}/similar", "5")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(2);
+    }
 }
