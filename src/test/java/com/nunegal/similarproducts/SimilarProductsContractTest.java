@@ -15,6 +15,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.time.Duration;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.exactly;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
@@ -145,5 +146,20 @@ class SimilarProductsContractTest {
                 .jsonPath("$.length()").isEqualTo(2);
 
         existingApis.verify(exactly(1), getRequestedFor(urlEqualTo("/product/2")));
+    }
+
+    @Test
+    @DisplayName("responde 404 cuando el producto raíz no existe")
+    void not_found_when_the_product_does_not_exist() {
+        existingApis.stubFor(get("/product/999/similarids").willReturn(aResponse()
+                .withStatus(404)
+                .withHeader("Content-Type", "text/plain; charset=utf-8")
+                .withBody("Not Found")));
+
+        webTestClient.get()
+                .uri("/product/{productId}/similar", "999")
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody().isEmpty();
     }
 }
