@@ -1,5 +1,6 @@
 package com.nunegal.similarproducts;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.AfterAll;
@@ -15,6 +16,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.exactly;
@@ -24,6 +30,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 @SpringBootTest(webEnvironment = RANDOM_PORT)
@@ -36,6 +43,8 @@ class SimilarProductsContractTest {
     WebTestClient webTestClient;
     @Autowired
     MeterRegistry meterRegistry;
+    @Autowired
+    List<Cache<?, ?>> caches;
 
     @BeforeAll
     static void startExistingApis() {
@@ -60,8 +69,9 @@ class SimilarProductsContractTest {
     }
 
     @BeforeEach
-    void resetStubs() {
+    void resetStubsAndCaches() {
         existingApis.resetAll();
+        caches.forEach(Cache::invalidateAll);
     }
 
     @Test
@@ -258,6 +268,72 @@ class SimilarProductsContractTest {
                 .uri("/product/{productId}/similar", "1")
                 .exchange()
                 .expectStatus().is5xxServerError();
+    }
+
+    @Test
+    @DisplayName("no vuelve a pedir al upstream lo que ya tiene en caché")
+    void serves_repeated_requests_from_the_cache() {
+        existingApis.stubFor(get("/product/1/similarids").willReturn(okJson("[2]")));
+        stubDetail("2", "Dress", "19.99", 0);
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+            webTestClient.get()
+                    .uri("/product/{productId}/similar", "1")
+                    .exchange()
+                    .expectStatus().isOk()
+                    .expectBody()
+                    .jsonPath("$[0].id").isEqualTo("2");
+        }
+
+        existingApis.verify(exactly(1), getRequestedFor(urlEqualTo("/product/1/similarids")));
+        existingApis.verify(exactly(1), getRequestedFor(urlEqualTo("/product/2")));
+    }
+
+    @Test
+    @DisplayName("una ráfaga concurrente en frío produce una sola llamada por recurso")
+    void coalesces_a_concurrent_burst() throws Exception {
+        existingApis.stubFor(get("/product/1/similarids").willReturn(okJson("[2]").withFixedDelay(200)));
+        stubDetail("2", "Dress", "19.99", 200);
+
+        List<Future<?>> responses = new ArrayList<>();
+        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < 50; i++) {
+                responses.add(pool.submit(() -> webTestClient.get()
+                        .uri("/product/{productId}/similar", "1")
+                        .exchange()
+                        .expectStatus().isOk()));
+            }
+        }
+        for (Future<?> response : responses) {
+            response.get();
+        }
+
+        existingApis.verify(exactly(1), getRequestedFor(urlEqualTo("/product/1/similarids")));
+        existingApis.verify(exactly(1), getRequestedFor(urlEqualTo("/product/2")));
+    }
+
+    @Test
+    @DisplayName("un fallo del upstream no se queda pegado en la caché")
+    void does_not_cache_failures_for_long() {
+        existingApis.stubFor(get("/product/1/similarids").willReturn(okJson("[2]")));
+        existingApis.stubFor(get("/product/2").willReturn(aResponse().withStatus(500)));
+
+        webTestClient.get()
+                .uri("/product/{productId}/similar", "1")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(0);
+
+        stubDetail("2", "Dress", "19.99", 0);
+
+        await().atMost(Duration.ofSeconds(2)).untilAsserted(() ->
+                webTestClient.get()
+                        .uri("/product/{productId}/similar", "1")
+                        .exchange()
+                        .expectStatus().isOk()
+                        .expectBody()
+                        .jsonPath("$.length()").isEqualTo(1));
     }
 
     private double discardedSimilars() {

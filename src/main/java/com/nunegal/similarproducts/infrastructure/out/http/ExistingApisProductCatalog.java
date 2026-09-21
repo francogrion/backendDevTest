@@ -3,6 +3,7 @@ package com.nunegal.similarproducts.infrastructure.out.http;
 import com.nunegal.similarproducts.domain.ProductCatalog;
 import com.nunegal.similarproducts.domain.ProductDetail;
 import com.nunegal.similarproducts.domain.ProductNotFoundException;
+import com.nunegal.similarproducts.infrastructure.out.Upstream;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ import java.time.Duration;
 import java.util.List;
 
 @Component
+@Upstream
 class ExistingApisProductCatalog implements ProductCatalog {
 
     private static final ParameterizedTypeReference<List<String>> SIMILAR_IDS =
