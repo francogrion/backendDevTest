@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import java.time.Duration;
 import java.util.List;
 
 @Component
@@ -21,11 +20,9 @@ class ExistingApisProductCatalog implements ProductCatalog {
             new ParameterizedTypeReference<>() {
             };
     private final WebClient webClient;
-    private final Duration requestTimeout;
 
-    ExistingApisProductCatalog(WebClient existingApisWebClient, ExistingApisProperties properties) {
+    ExistingApisProductCatalog(WebClient existingApisWebClient) {
         this.webClient = existingApisWebClient;
-        this.requestTimeout = properties.requestTimeout();
     }
 
     @Override
@@ -38,8 +35,7 @@ class ExistingApisProductCatalog implements ProductCatalog {
                 .retrieve()
                 .onStatus(HttpStatus.NOT_FOUND::equals,
                         response -> Mono.error(new ProductNotFoundException(productId)))
-                .bodyToMono(SIMILAR_IDS)
-                .timeout(requestTimeout);
+                .bodyToMono(SIMILAR_IDS);
     }
 
     @Override
@@ -47,7 +43,6 @@ class ExistingApisProductCatalog implements ProductCatalog {
         return webClient.get()
                 .uri("/product/{productId}", productId)
                 .retrieve()
-                .bodyToMono(ProductDetail.class)
-                .timeout(requestTimeout);
+                .bodyToMono(ProductDetail.class);
     }
 }

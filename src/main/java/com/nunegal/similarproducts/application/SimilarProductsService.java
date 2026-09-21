@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+
 @Service
 public class SimilarProductsService {
 
@@ -17,9 +19,12 @@ public class SimilarProductsService {
 
     private final ProductCatalog catalog;
     private final Counter discardedSimilars;
+    private final Duration budget;
 
-    SimilarProductsService(ProductCatalog catalog, MeterRegistry meterRegistry) {
+    SimilarProductsService(ProductCatalog catalog, SimilarProductsProperties properties,
+                           MeterRegistry meterRegistry) {
         this.catalog = catalog;
+        this.budget = properties.budget();
         this.discardedSimilars = Counter.builder("similar.products.discarded")
                 .description("Similar products left out because their detail could not be retrieved")
                 .register(meterRegistry);
@@ -27,6 +32,7 @@ public class SimilarProductsService {
 
     public Flux<ProductDetail> similarTo(String productId) {
         return catalog.similarIds(productId)
+                .timeout(budget)
                 .flatMapMany(Flux::fromIterable)
                 .distinct()
                 .flatMapSequential(this::detailOrSkip);
@@ -34,6 +40,7 @@ public class SimilarProductsService {
 
     private Mono<ProductDetail> detailOrSkip(String similarId) {
         return catalog.detail(similarId)
+                .timeout(budget)
                 .onErrorResume(error -> {
                     discardedSimilars.increment();
                     log.debug("Discarding similar product {}: {}", similarId, error.toString());

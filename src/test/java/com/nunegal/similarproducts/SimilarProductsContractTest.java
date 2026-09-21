@@ -59,7 +59,7 @@ class SimilarProductsContractTest {
     @DynamicPropertySource
     static void existingApisBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("existing-apis.base-url", existingApis::baseUrl);
-        registry.add("existing-apis.request-timeout", () -> "1s");
+        registry.add("similar-products.budget", () -> "1s");
     }
 
     private static void stubDetail(String id, String name, String price, int delayMillis) {
@@ -334,6 +334,33 @@ class SimilarProductsContractTest {
                         .expectStatus().isOk()
                         .expectBody()
                         .jsonPath("$.length()").isEqualTo(1));
+    }
+
+    @Test
+    @DisplayName("un detalle que llega tarde acaba en la caché y aparece en las peticiones siguientes")
+    void a_late_detail_eventually_lands_in_the_cache() {
+        existingApis.stubFor(get("/product/1/similarids").willReturn(okJson("[2,3]")));
+        stubDetail("2", "Dress", "19.99", 0);
+        stubDetail("3", "Blazer", "29.99", 1500);
+
+        webTestClient.get()
+                .uri("/product/{productId}/similar", "1")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(1)
+                .jsonPath("$[0].id").isEqualTo("2");
+
+        await().atMost(Duration.ofSeconds(3)).untilAsserted(() ->
+                webTestClient.get()
+                        .uri("/product/{productId}/similar", "1")
+                        .exchange()
+                        .expectStatus().isOk()
+                        .expectBody()
+                        .jsonPath("$.length()").isEqualTo(2)
+                        .jsonPath("$[1].id").isEqualTo("3"));
+
+        existingApis.verify(exactly(1), getRequestedFor(urlEqualTo("/product/3")));
     }
 
     private double discardedSimilars() {

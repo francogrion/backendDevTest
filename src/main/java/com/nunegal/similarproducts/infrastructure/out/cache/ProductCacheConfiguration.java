@@ -5,7 +5,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.nunegal.similarproducts.domain.ProductDetail;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.cache.CaffeineCacheMetrics;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import reactor.core.publisher.Mono;
@@ -13,7 +12,6 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 @Configuration
-@EnableConfigurationProperties(ProductCacheProperties.class)
 class ProductCacheConfiguration {
 
     @Bean
