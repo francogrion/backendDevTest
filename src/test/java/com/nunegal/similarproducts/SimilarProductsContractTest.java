@@ -50,6 +50,7 @@ class SimilarProductsContractTest {
     @DynamicPropertySource
     static void existingApisBaseUrl(DynamicPropertyRegistry registry) {
         registry.add("existing-apis.base-url", existingApis::baseUrl);
+        registry.add("existing-apis.request-timeout", () -> "1s");
     }
 
     private static void stubDetail(String id, String name, String price, int delayMillis) {
@@ -223,6 +224,40 @@ class SimilarProductsContractTest {
         assertThat(discardedSimilars())
                 .as("el similar 6 responde 500, debe quedar contabilizado")
                 .isEqualTo(before + 1);
+    }
+
+    @Test
+    @DisplayName("descarta el similar cuyo detalle no llega a tiempo (escenario verySlow de k6)")
+    void skips_similars_whose_detail_times_out() {
+        existingApis.stubFor(get("/product/3/similarids").willReturn(okJson("[100,1000]")));
+        stubDetail("100", "Trousers", "49.99", 0);
+        stubDetail("1000", "Coat", "89.99", 1500);
+
+        long startedAt = System.nanoTime();
+        webTestClient.get()
+                .uri("/product/{productId}/similar", "3")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(1)
+                .jsonPath("$[0].id").isEqualTo("100");
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - startedAt);
+
+        assertThat(elapsed)
+                .as("la respuesta se acota al presupuesto, no al retardo del upstream")
+                .isLessThan(Duration.ofMillis(1400));
+    }
+
+    @Test
+    @DisplayName("responde 500, no 404 ni 200 vacío, si la lista de similares no llega a tiempo")
+    void server_error_when_similar_ids_time_out() {
+        existingApis.stubFor(get("/product/1/similarids")
+                .willReturn(okJson("[2]").withFixedDelay(1500)));
+
+        webTestClient.get()
+                .uri("/product/{productId}/similar", "1")
+                .exchange()
+                .expectStatus().is5xxServerError();
     }
 
     private double discardedSimilars() {

@@ -10,6 +10,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.List;
 
 @Component
@@ -19,9 +20,11 @@ class ExistingApisProductCatalog implements ProductCatalog {
             new ParameterizedTypeReference<>() {
             };
     private final WebClient webClient;
+    private final Duration requestTimeout;
 
-    ExistingApisProductCatalog(WebClient existingApisWebClient) {
+    ExistingApisProductCatalog(WebClient existingApisWebClient, ExistingApisProperties properties) {
         this.webClient = existingApisWebClient;
+        this.requestTimeout = properties.requestTimeout();
     }
 
     @Override
@@ -34,6 +37,7 @@ class ExistingApisProductCatalog implements ProductCatalog {
                 .onStatus(HttpStatus.NOT_FOUND::equals,
                         response -> Mono.error(new ProductNotFoundException(productId)))
                 .bodyToMono(SIMILAR_IDS)
+                .timeout(requestTimeout)
                 .flatMapMany(Flux::fromIterable);
     }
 
@@ -42,6 +46,7 @@ class ExistingApisProductCatalog implements ProductCatalog {
         return webClient.get()
                 .uri("/product/{productId}", productId)
                 .retrieve()
-                .bodyToMono(ProductDetail.class);
+                .bodyToMono(ProductDetail.class)
+                .timeout(requestTimeout);
     }
 }
