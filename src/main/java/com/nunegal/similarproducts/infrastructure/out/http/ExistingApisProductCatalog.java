@@ -8,7 +8,6 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -30,17 +29,17 @@ class ExistingApisProductCatalog implements ProductCatalog {
     }
 
     @Override
-    public Flux<String> similarIds(String productId) {
-        // bodyToFlux(String.class) NO sirve aquí: con elemento String gana el StringDecoder
-        // y devuelve el cuerpo crudo ("[2]") en vez de los elementos del array JSON.
+    public Mono<List<String>> similarIds(String productId) {
+        // bodyToMono(ParameterizedTypeReference<List<String>>) y no bodyToFlux(String.class):
+        // con elemento String gana el StringDecoder y devuelve el cuerpo crudo ("[2]") en vez
+        // de los elementos del array JSON.
         return webClient.get()
                 .uri("/product/{productId}/similarids", productId)
                 .retrieve()
                 .onStatus(HttpStatus.NOT_FOUND::equals,
                         response -> Mono.error(new ProductNotFoundException(productId)))
                 .bodyToMono(SIMILAR_IDS)
-                .timeout(requestTimeout)
-                .flatMapMany(Flux::fromIterable);
+                .timeout(requestTimeout);
     }
 
     @Override

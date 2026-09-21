@@ -6,11 +6,9 @@ import com.nunegal.similarproducts.domain.ProductDetail;
 import com.nunegal.similarproducts.infrastructure.out.Upstream;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
-import java.util.function.Function;
 
 @Component
 @Primary
@@ -32,9 +30,8 @@ class CachingProductCatalog implements ProductCatalog {
     }
 
     @Override
-    public Flux<String> similarIds(String productId) {
-        return similarIdsCache.get(productId, id -> coalesced(upstream.similarIds(id).collectList()))
-                .flatMapIterable(Function.identity());
+    public Mono<List<String>> similarIds(String productId) {
+        return similarIdsCache.get(productId, id -> coalesced(upstream.similarIds(id)));
     }
 
     @Override

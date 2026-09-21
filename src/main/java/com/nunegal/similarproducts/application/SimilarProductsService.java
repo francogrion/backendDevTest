@@ -27,6 +27,7 @@ public class SimilarProductsService {
 
     public Flux<ProductDetail> similarTo(String productId) {
         return catalog.similarIds(productId)
+                .flatMapMany(Flux::fromIterable)
                 .distinct()
                 .flatMapSequential(this::detailOrSkip);
     }
